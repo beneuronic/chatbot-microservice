@@ -1,41 +1,46 @@
-import dotenv from "dotenv";
-dotenv.config(); // 👈 Cargar variables antes que nada
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import routes from './routes/index.js';
+import { connectDB } from './config/db.js';
 
-import express from "express";
-import cors from "cors";
-import routes from "./routes/index.js";
-import { connectDB } from "./config/db.js";
-
-// 👇 Conexión a MongoDB
+dotenv.config();
 connectDB();
-
-const allowedOrigins = [
-  "https://neuronicdev.es/mcatalunya", // tu dominio real de WordPress
-  "http://localhost:4000", // para desarrollo local
-];
 
 const app = express();
 
-app.use(
-  cors({
-    origin: allowedOrigins,
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"],
-  })
-);
+// 🟢 CORS configuration
+const allowedOrigins = [
+  'https://neuronicdev.es',
+  'https://www.neuronicdev.es',
+  'http://localhost:10003',
+];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
 app.use(express.json());
 
 // ✅ Rutas principales
-app.use("/api", routes);
+app.use('/api', routes);
 
 // ✅ Ruta raíz de prueba
-app.get("/", (req, res) => {
-  res.send("Chatbot Microservice is running 🚀");
+app.get('/', (req, res) => {
+  res.send('Chatbot Microservice is running 🚀');
 });
 
-app.get("/status", (req, res) => {
-  res.json({ message: "API running successfully" });
+app.get('/status', (req, res) => {
+  res.json({ message: 'API running successfully' });
 });
 
 const PORT = process.env.PORT || 4000;
