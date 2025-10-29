@@ -1,12 +1,14 @@
-import { Router } from 'express'
-import { getStatus, sendMessage } from '../controllers/chatbot.controller.js'
+import express from "express";
+import { handleChatMessage } from "../controllers/chatbot.controller.js";
 
-const router = Router()
+const router = express.Router();
 
-// Ruta de test
-router.get('/status', getStatus)
+// Endpoint principal
+router.post("/chatbot/message", handleChatMessage);
 
-// Ejemplo de endpoint para recibir mensajes
-router.post('/message', sendMessage)
+// Endpoint de prueba opcional
+router.get("/chatbot/status", (req, res) => {
+  res.json({ status: "ok", service: "Chatbot Microservice" });
+});
 
-export default router
+export default router;
