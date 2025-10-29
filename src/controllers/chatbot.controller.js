@@ -1,6 +1,6 @@
 import Message from "../models/Message.js";
 import { generateChatbotReply } from "../services/chatbot.service.js";
-import { Usage } from "../models/Usage.js";
+import Usage from "../models/Usage.js";
 import { GlobalUsage } from "../models/GlobalUsage.js";
 
 const TENANT_LIMIT = 1000; // Límite por WordPress

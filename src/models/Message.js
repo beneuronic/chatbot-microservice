@@ -4,11 +4,7 @@ import Counter from "./Counter.js";
 
 const messageSchema = new mongoose.Schema({
   tenant: { type: String, required: true, default: "default" },
-
-  // 🔢 Número secuencial por tenant
   messageNumber: { type: Number },
-
-  // Contenido del mensaje
   message: { type: String, required: true },
   reply: { type: String },
   pageUrl: { type: String },
@@ -20,10 +16,9 @@ const messageSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-// 🧮 Hook: asigna número incremental antes de guardar
+// 🧮 Hook para asignar número incremental por tenant
 messageSchema.pre("save", async function (next) {
-  if (!this.isNew) return next(); // solo para nuevos mensajes
-
+  if (!this.isNew) return next();
   try {
     const counter = await Counter.findOneAndUpdate(
       { tenant: this.tenant },
@@ -38,11 +33,11 @@ messageSchema.pre("save", async function (next) {
   }
 });
 
-// ✅ Índices optimizados y sin duplicados
-messageSchema.index({ createdAt: -1 });                // analítica temporal global
-messageSchema.index({ language: 1 });                  // filtrar por idioma
-messageSchema.index({ source: 1 });                    // filtrar por canal
-messageSchema.index({ tenant: 1, createdAt: -1 });     // búsquedas por tenant + fecha
-messageSchema.index({ tenant: 1, messageNumber: 1 });  // orden secuencial por tenant
+// ✅ índices optimizados, sin duplicar tenant
+messageSchema.index({ tenant: 1, createdAt: -1 });
+messageSchema.index({ tenant: 1, messageNumber: 1 });
+messageSchema.index({ createdAt: -1 });
+messageSchema.index({ language: 1 });
+messageSchema.index({ source: 1 });
 
 export default mongoose.model("Message", messageSchema);

@@ -1,6 +1,6 @@
 import express from "express";
 import { handleChatMessage } from "../controllers/chatbot.controller.js";
-import { Usage } from "../models/Usage.js";
+import Usage from "../models/Usage.js";
 import { GlobalUsage } from "../models/GlobalUsage.js";
 
 const router = express.Router();
