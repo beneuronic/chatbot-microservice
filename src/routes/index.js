@@ -1,9 +1,9 @@
-import { Router } from 'express'
-import chatbotRoutes from './chatbot.routes.js'
+import express from "express";
+import chatbotRoutes from "./chatbot.routes.js";
 
-const router = Router()
+const router = express.Router();
 
-// ✅ Rutas agrupadas por módulo
-router.use('/chatbot', chatbotRoutes)
+// ✅ Monta todas las rutas del chatbot bajo /api
+router.use("/", chatbotRoutes);
 
-export default router
+export default router;
