@@ -2,21 +2,37 @@ import Message from "../models/Message.js";
 import { generateChatbotReply } from "../services/chatbot.service.js";
 import Usage from "../models/Usage.js";
 import { GlobalUsage } from "../models/GlobalUsage.js";
-import Tenant from "../models/Tenant.js"; // 👈 AÑADIR ESTA LÍNEA
+import Tenant from "../models/Tenant.js";
 
-const TENANT_LIMIT = 1000; // Límite por WordPress
-const GLOBAL_LIMIT = 2500; // Límite total compartido
+const TENANT_LIMIT = 1000;
+const GLOBAL_LIMIT = 2500;
 
 export const handleChatMessage = async (req, res) => {
   try {
-    const { message, tenant = "default", language = null, pageUrl, source = "web" } = req.body;
+    const { message, language = null, pageUrl, source = "web" } = req.body;
 
-    if (!message) {
-      return res.status(400).json({ error: "Mensaje vacío" });
+    if (!message) return res.status(400).json({ error: "Mensaje vacío" });
+
+    // 🧩 Detección híbrida del tenant
+    const origin = req.get("origin") || req.get("referer") || "";
+    let tenant = req.body.tenant || "auto";
+
+    let tenantData = await Tenant.findOne({
+      $or: [
+        { name: tenant },
+        { domains: { $in: [origin] } }
+      ],
+      active: true
+    });
+
+    if (!tenantData) {
+      console.warn(`⚠️ Tenant no encontrado (${origin}), usando 'default'`);
+      tenantData = await Tenant.findOne({ name: "default" });
+      tenant = "default";
+    } else {
+      tenant = tenantData.name;
     }
-
-    // 🔹 Buscar configuración del tenant
-    const tenantData = await Tenant.findOne({ name: tenant, active: true });
+    console.log(`✅ Tenant detectado o asignado: ${tenant}`);
 
     // --- Obtener o crear registros de uso ---
     let usage = await Usage.findOne({ tenant });
@@ -53,7 +69,7 @@ export const handleChatMessage = async (req, res) => {
       console.warn(`⚠️ Tenant ${tenant} ha superado su límite, usando margen global.`);
     }
 
-    // --- Generar respuesta con OpenAI ---
+    // --- Generar respuesta ---
     const reply = await generateChatbotReply(message, null, tenantData, language);
 
     // --- Guardar mensaje ---
