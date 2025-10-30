@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import routes from './routes/index.js';
 import { connectDB } from './config/db.js';
+import instructionRoutes from "./routes/instruction.routes.js"; // 👈 ya importado correctamente
 
 dotenv.config();
 connectDB();
@@ -21,7 +22,7 @@ app.use((req, res, next) => {
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
@@ -33,6 +34,9 @@ app.use(express.json());
 
 // ✅ Rutas principales
 app.use('/api', routes);
+
+// ✅ NUEVO: rutas específicas para las instrucciones
+app.use("/api/instructions", instructionRoutes); // 👈 Añadir esto
 
 // ✅ Ruta raíz de prueba
 app.get('/', (req, res) => {

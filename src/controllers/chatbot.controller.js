@@ -3,6 +3,7 @@ import { generateChatbotReply } from "../services/chatbot.service.js";
 import Usage from "../models/Usage.js";
 import { GlobalUsage } from "../models/GlobalUsage.js";
 import Tenant from "../models/Tenant.js";
+import Instruction from "../models/Instruction.js";
 
 const TENANT_LIMIT = 1000;
 const GLOBAL_LIMIT = 2500;
@@ -13,7 +14,7 @@ export const handleChatMessage = async (req, res) => {
 
     if (!message) return res.status(400).json({ error: "Mensaje vacío" });
 
-    // 🧩 Detección híbrida del tenant
+    // 🧩 Detección híbrida del tenant (por cuerpo o dominio)
     const origin = req.get("origin") || req.get("referer") || "";
     let tenant = req.body.tenant || "auto";
 
@@ -32,6 +33,7 @@ export const handleChatMessage = async (req, res) => {
     } else {
       tenant = tenantData.name;
     }
+
     console.log(`✅ Tenant detectado o asignado: ${tenant}`);
 
     // --- Obtener o crear registros de uso ---
@@ -42,7 +44,7 @@ export const handleChatMessage = async (req, res) => {
     if (!globalUsage)
       globalUsage = await GlobalUsage.create({ totalMessages: 0, limit: GLOBAL_LIMIT });
 
-    // --- Reset mensual ---
+    // --- Reset mensual (30 días) ---
     const now = new Date();
     const daysSinceReset = (now - usage.lastReset) / (1000 * 60 * 60 * 24);
     if (daysSinceReset > 30) {
@@ -69,10 +71,20 @@ export const handleChatMessage = async (req, res) => {
       console.warn(`⚠️ Tenant ${tenant} ha superado su límite, usando margen global.`);
     }
 
-    // --- Generar respuesta ---
-    const reply = await generateChatbotReply(message, null, tenantData, language);
+    // --- Obtener instrucciones del tenant ---
+    const instructions = await Instruction.find({ tenant }).sort({ createdAt: 1 });
+    const combinedInstructions = instructions.map(i => `- ${i.text}`).join("\n");
 
-    // --- Guardar mensaje ---
+    // 🧠 Construir el prompt combinado (prompt base + instrucciones)
+    const systemPrompt = `
+${tenantData?.prompt || ""}
+${combinedInstructions ? "\nAdditional behavior rules:\n" + combinedInstructions : ""}
+`.trim();
+
+    // --- Generar respuesta con instrucciones integradas ---
+    const reply = await generateChatbotReply(message, systemPrompt, tenantData, language);
+
+    // --- Guardar mensaje en la base de datos ---
     await Message.create({
       tenant,
       message,
@@ -89,7 +101,9 @@ export const handleChatMessage = async (req, res) => {
     await usage.save();
     await globalUsage.save();
 
+    // --- Enviar respuesta al cliente ---
     res.json({ reply });
+
   } catch (error) {
     console.error("❌ Error en handleChatMessage:", error);
     res.status(500).json({ error: "Error interno del chatbot" });
