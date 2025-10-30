@@ -15,6 +15,4 @@ const tenantSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now },
 });
 
-tenantSchema.index({ name: 1 });
-
 export default mongoose.model("Tenant", tenantSchema);
