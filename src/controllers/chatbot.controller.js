@@ -2,23 +2,21 @@ import Message from "../models/Message.js";
 import { generateChatbotReply } from "../services/chatbot.service.js";
 import Usage from "../models/Usage.js";
 import { GlobalUsage } from "../models/GlobalUsage.js";
+import Tenant from "../models/Tenant.js"; // 👈 AÑADIR ESTA LÍNEA
 
 const TENANT_LIMIT = 1000; // Límite por WordPress
 const GLOBAL_LIMIT = 2500; // Límite total compartido
 
 export const handleChatMessage = async (req, res) => {
   try {
-    const {
-      message,
-      tenant = "default",
-      pageUrl,
-      language = "es",
-      source = "web",
-    } = req.body;
+    const { message, tenant = "default", language = null, pageUrl, source = "web" } = req.body;
 
     if (!message) {
       return res.status(400).json({ error: "Mensaje vacío" });
     }
+
+    // 🔹 Buscar configuración del tenant
+    const tenantData = await Tenant.findOne({ name: tenant, active: true });
 
     // --- Obtener o crear registros de uso ---
     let usage = await Usage.findOne({ tenant });
@@ -51,13 +49,12 @@ export const handleChatMessage = async (req, res) => {
       });
     }
 
-    // 🔹 Si tenant alcanzó su límite pero global tiene margen → permitir igualmente
     if (tenantReachedLimit) {
       console.warn(`⚠️ Tenant ${tenant} ha superado su límite, usando margen global.`);
     }
 
-    // --- Llamada a OpenAI ---
-    const reply = await generateChatbotReply(message);
+    // --- Generar respuesta con OpenAI ---
+    const reply = await generateChatbotReply(message, null, tenantData, language);
 
     // --- Guardar mensaje ---
     await Message.create({
