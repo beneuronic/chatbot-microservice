@@ -13,15 +13,36 @@ export const handleChatMessage = async (req, res) => {
     const { message, language = null, pageUrl, source = "web" } = req.body;
     if (!message) return res.status(400).json({ error: "Mensaje vacío" });
 
-    // 🧩 Detección híbrida del tenant
+    // 🧩 Detección híbrida del tenant (compatible con múltiples dominios y subdirectorios)
     const origin = req.get("origin") || req.get("referer") || "";
     let tenant = req.body.tenant || "auto";
 
+    console.log("🌐 Origen detectado:", origin);
+
+    // 1️⃣ Normalizar el valor del origin / referer
+    let parsedOrigin = origin;
+    try {
+      const parsedUrl = new URL(origin);
+      // Se usa el dominio + pathname base (por si hay subdirectorio)
+      parsedOrigin = parsedUrl.origin + parsedUrl.pathname;
+      // Se elimina barra final para evitar fallos de coincidencia
+      if (parsedOrigin.endsWith("/")) parsedOrigin = parsedOrigin.slice(0, -1);
+    } catch (e) {
+      console.warn("⚠️ No se pudo parsear el origin correctamente:", origin);
+    }
+
+    // 2️⃣ Buscar tenant por nombre o dominio/subdirectorio parcial
     let tenantData = await Tenant.findOne({
-      $or: [{ name: tenant }, { domains: { $in: [origin] } }],
+      $or: [
+        { name: tenant },
+        { domains: { $elemMatch: { $regex: parsedOrigin, $options: "i" } } },
+        // Si no se encuentra coincidencia exacta, busca por dominio base
+        { domains: { $elemMatch: { $regex: new URL(origin).origin, $options: "i" } } }
+      ],
       active: true,
     });
 
+    // 3️⃣ Si no hay coincidencia, usar default
     if (!tenantData) {
       console.warn(`⚠️ Tenant no encontrado (${origin}), usando 'default'`);
       tenantData = await Tenant.findOne({ name: "default" });
