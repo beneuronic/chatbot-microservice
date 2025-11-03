@@ -17,23 +17,22 @@ export const handleChatMessage = async (req, res) => {
     // 🌐 Detección de tenant según cuerpo o dominio
     const origin = req.get("origin") || req.get("referer") || "";
     let tenant = req.body.tenant || "auto";
+
     let tenantData = null;
 
     try {
-      const parsed = new URL(origin);
-      const baseDomain = parsed.hostname.replace(/^www\./, "");
-
-      // 🔎 Busca coincidencia exacta o parcial (subdominio o subdirectorio)
       tenantData = await Tenant.findOne({
         $or: [
           { name: tenant },
-          { domains: { $in: [origin] } },
-          { domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } },
+          { domains: { $elemMatch: { $regex: parsedOrigin, $options: "i" } } },
+          { domains: { $elemMatch: { $regex: new URL(origin).origin, $options: "i" } } },
+          // 💡 Busca también si el dominio base coincide parcialmente
+          { domains: { $elemMatch: { $regex: "neuronicdev\\.es", $options: "i" } } }
         ],
         active: true,
       });
     } catch (e) {
-      console.warn("⚠️ Error interpretando origen:", origin, e.message);
+      console.warn("⚠️ Error durante la búsqueda de tenant:", e.message);
     }
 
     if (!tenantData) {
@@ -41,10 +40,11 @@ export const handleChatMessage = async (req, res) => {
       tenantData = await Tenant.findOne({ name: "default" });
       tenant = "default";
     } else {
-      tenant = tenantData.name || "default";
+      tenant = tenantData?.name || "default";
     }
 
     console.log(`✅ Tenant detectado o asignado: ${tenant}`);
+
 
     // --- Obtener o crear registros de uso ---
     let usage = await Usage.findOne({ tenant });
