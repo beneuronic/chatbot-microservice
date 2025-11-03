@@ -32,26 +32,33 @@ export const handleChatMessage = async (req, res) => {
     }
 
     // 2️⃣ Buscar tenant por nombre o dominio/subdirectorio parcial
-    let tenantData = await Tenant.findOne({
-      $or: [
-        { name: tenant },
-        { domains: { $elemMatch: { $regex: parsedOrigin, $options: "i" } } },
-        // Si no se encuentra coincidencia exacta, busca por dominio base
-        { domains: { $elemMatch: { $regex: new URL(origin).origin, $options: "i" } } }
-      ],
-      active: true,
-    });
+let tenantData = null;
 
-    // 3️⃣ Si no hay coincidencia, usar default
-    if (!tenantData) {
-      console.warn(`⚠️ Tenant no encontrado (${origin}), usando 'default'`);
-      tenantData = await Tenant.findOne({ name: "default" });
-      tenant = "default";
-    } else {
-      tenant = tenantData.name;
-    }
+try {
+  tenantData = await Tenant.findOne({
+    $or: [
+      { name: tenant },
+      { domains: { $elemMatch: { $regex: parsedOrigin, $options: "i" } } },
+      { domains: { $elemMatch: { $regex: new URL(origin).origin, $options: "i" } } },
+      // 💡 Busca también si el dominio base coincide parcialmente
+      { domains: { $elemMatch: { $regex: "neuronicdev\\.es", $options: "i" } } }
+    ],
+    active: true,
+  });
+} catch (e) {
+  console.warn("⚠️ Error durante la búsqueda de tenant:", e.message);
+}
 
-    console.log(`✅ Tenant detectado o asignado: ${tenant}`);
+if (!tenantData) {
+  console.warn(`⚠️ Tenant no encontrado (${origin}), usando 'default'`);
+  tenantData = await Tenant.findOne({ name: "default" });
+  tenant = "default";
+} else {
+  tenant = tenantData?.name || "default";
+}
+
+console.log(`✅ Tenant detectado o asignado: ${tenant}`);
+
 
     // --- Obtener o crear registros de uso ---
     let usage = await Usage.findOne({ tenant });
