@@ -14,25 +14,29 @@ export const handleChatMessage = async (req, res) => {
 
     if (!message) return res.status(400).json({ error: "Mensaje vacío" });
 
-    // 🌐 Detección de tenant según cuerpo o dominio
+    // 🌐 Detección de tenant (por body o dominio Referer/Origin)
     const origin = req.get("origin") || req.get("referer") || "";
     let tenant = req.body.tenant || "auto";
-
     let tenantData = null;
 
     try {
+      // Analizar el dominio base
+      const parsedUrl = new URL(origin);
+      const baseDomain = parsedUrl.hostname.replace(/^www\./, "");
+      const pathSegment = parsedUrl.pathname.split("/").filter(Boolean)[0]; // primer subdirectorio (mcatalunya)
+
+      // 🔎 Buscar coincidencia exacta, parcial o por subdirectorio
       tenantData = await Tenant.findOne({
         $or: [
           { name: tenant },
-          { domains: { $elemMatch: { $regex: parsedOrigin, $options: "i" } } },
-          { domains: { $elemMatch: { $regex: new URL(origin).origin, $options: "i" } } },
-          // 💡 Busca también si el dominio base coincide parcialmente
-          { domains: { $elemMatch: { $regex: "neuronicdev\\.es", $options: "i" } } }
+          { domains: { $in: [origin] } },
+          { domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } },
+          { domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } },
         ],
         active: true,
       });
-    } catch (e) {
-      console.warn("⚠️ Error durante la búsqueda de tenant:", e.message);
+    } catch (err) {
+      console.warn("⚠️ Error interpretando origen:", origin, err.message);
     }
 
     if (!tenantData) {
@@ -44,7 +48,6 @@ export const handleChatMessage = async (req, res) => {
     }
 
     console.log(`✅ Tenant detectado o asignado: ${tenant}`);
-
 
     // --- Obtener o crear registros de uso ---
     let usage = await Usage.findOne({ tenant });
@@ -70,16 +73,19 @@ export const handleChatMessage = async (req, res) => {
     // --- Comprobar límites ---
     if (globalUsage.totalMessages >= GLOBAL_LIMIT) {
       return res.status(429).json({
-        reply: "⚠️ El chatbot ha alcanzado el límite global de interacciones. Inténtalo más tarde.",
+        reply:
+          "⚠️ El chatbot ha alcanzado el límite global de interacciones. Inténtalo más tarde.",
       });
     }
 
     // --- Obtener instrucciones del tenant ---
-    const tenantInstructions = await Instruction.find({ tenant: tenantData.name });
+    const tenantInstructions = tenantData
+      ? await Instruction.find({ tenant: tenantData.name })
+      : [];
     const instructionTexts = tenantInstructions.map((i) => i.text);
     console.log(`📘 Instrucciones cargadas para ${tenant}:`, instructionTexts);
 
-    // --- Generar respuesta con instrucciones ---
+    // --- Generar respuesta ---
     const reply = await generateChatbotReply(message, instructionTexts, tenantData, language);
 
     // --- Guardar mensaje ---
