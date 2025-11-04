@@ -5,6 +5,8 @@ import OpenAI from "openai";
 import Tenant from "../models/Tenant.js";
 import Instruction from "../models/Instruction.js"; // 👈 necesario
 
+
+
 if (!process.env.OPENAI_API_KEY) {
   console.error("❌ No se encontró OPENAI_API_KEY. Verifica tu archivo .env");
 }
