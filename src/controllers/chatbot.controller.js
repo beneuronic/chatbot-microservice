@@ -11,51 +11,54 @@ const GLOBAL_LIMIT = 2500;
 export const handleChatMessage = async (req, res) => {
   try {
     const { message, language = null, pageUrl, source = "web" } = req.body;
+    let { tenant } = req.body;
 
     if (!message) return res.status(400).json({ error: "Mensaje vacío" });
 
     // 🌐 Detección de tenant (por body o dominio Referer/Origin)
     const origin = req.get("origin") || req.get("referer") || "";
-    let tenant = req.body.tenant || "auto";
     let tenantData = null;
 
+    console.log("🧠 tenant recibido:", tenant);
+    console.log("🌍 origin header:", origin || "(vacío)");
+
+    // --- Construir filtros de dominio robustos ---
+    let domainFilters = [];
     try {
-      if (origin && typeof origin === "string") {
+      if (origin) {
         const parsedUrl = new URL(origin);
         const baseDomain = parsedUrl.hostname.replace(/^www\./, "");
         const pathSegmentRaw = parsedUrl.pathname?.split("/").filter(Boolean)[0];
         const pathSegment = typeof pathSegmentRaw === "string" ? pathSegmentRaw : "";
 
-        // 🧠 Solo construir las condiciones si existen valores válidos
-        const domainFilters = [];
-        if (origin) domainFilters.push({ domains: { $in: [origin] } });
-        if (baseDomain) domainFilters.push({ domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } });
-        if (pathSegment) domainFilters.push({ domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } });
-
-        console.log("🧠 tenant recibido:", tenant);
-        console.log("🧱 domainFilters antes de Tenant.findOne:", domainFilters);
-
-        tenantData = await Tenant.findOne({
-          $or: [{ name: tenant }, ...domainFilters],
-          active: true,
-        });
-
-        console.log("🧩 Resultado Tenant.findOne:", tenantData);
-
+        domainFilters = [
+          { domains: { $in: [origin] } },
+          { domains: { $regex: baseDomain, $options: "i" } },
+          { domains: { $regex: pathSegment, $options: "i" } },
+        ];
       }
     } catch (err) {
       console.warn("⚠️ Error interpretando origen:", origin, err.message);
     }
 
+    console.log("🧱 domainFilters antes de Tenant.findOne:", domainFilters);
 
+    // --- Buscar Tenant por nombre o dominio ---
+    tenantData = await Tenant.findOne({
+      $or: [{ name: tenant }, ...domainFilters],
+      active: true,
+    });
+
+    console.log("🧩 Resultado Tenant.findOne:", tenantData);
+
+    // --- Si no se encuentra, intentar fallback ---
     if (!tenantData) {
       console.warn(`⚠️ Tenant no encontrado (${origin}), verificando instrucciones para '${tenant}'...`);
-
-      // 🔍 Si existen instrucciones para el tenant del body, úsalo igual
       const existingInstructions = await Instruction.find({ tenant });
+
       if (existingInstructions.length > 0) {
         console.log(`✅ Tenant detectado por instrucciones: ${tenant}`);
-        tenantData = { name: tenant, active: true }; // objeto simulado
+        tenantData = { name: tenant, active: true }; // objeto temporal simulado
       } else {
         console.warn(`⚠️ Tampoco hay instrucciones para '${tenant}', aplicando 'default'`);
         tenantData = await Tenant.findOne({ name: "default" });
@@ -64,7 +67,6 @@ export const handleChatMessage = async (req, res) => {
     } else {
       tenant = tenantData?.name || tenant;
     }
-
 
     console.log(`✅ Tenant detectado o asignado: ${tenant}`);
 
@@ -92,8 +94,7 @@ export const handleChatMessage = async (req, res) => {
     // --- Comprobar límites ---
     if (globalUsage.totalMessages >= GLOBAL_LIMIT) {
       return res.status(429).json({
-        reply:
-          "⚠️ El chatbot ha alcanzado el límite global de interacciones. Inténtalo más tarde.",
+        reply: "⚠️ El chatbot ha alcanzado el límite global de interacciones. Inténtalo más tarde.",
       });
     }
 
@@ -101,6 +102,7 @@ export const handleChatMessage = async (req, res) => {
     const tenantInstructions = tenantData
       ? await Instruction.find({ tenant: tenantData.name })
       : [];
+
     const instructionTexts = tenantInstructions.map((i) => i.text);
     console.log(`📘 Instrucciones cargadas para ${tenant}:`, instructionTexts);
 
