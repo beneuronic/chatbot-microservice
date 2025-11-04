@@ -34,6 +34,17 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
+// Si quieres habilitar CORS para todo (temporalmente, desarrollo):
+// app.use(cors({ origin: "*" }));
+// despues usar
+app.use(
+  cors({
+    origin: ["https://neuronicdev.es", "https://www.neuronicdev.es"], // dominios permitidos
+    methods: ["GET", "POST", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
 // ✅ Rutas principales
 // app.use('/api', routes);
 app.use("/api/chatbot", chatbotRoutes);
