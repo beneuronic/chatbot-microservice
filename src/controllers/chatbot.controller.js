@@ -20,24 +20,27 @@ export const handleChatMessage = async (req, res) => {
     let tenantData = null;
 
     try {
-      // Analizar el dominio base
-      const parsedUrl = new URL(origin);
-      const baseDomain = parsedUrl.hostname.replace(/^www\./, "");
-      const pathSegment = parsedUrl.pathname.split("/").filter(Boolean)[0]; // primer subdirectorio (mcatalunya)
+      if (origin && typeof origin === "string") {
+        const parsedUrl = new URL(origin);
+        const baseDomain = parsedUrl.hostname.replace(/^www\./, "");
+        const pathSegmentRaw = parsedUrl.pathname?.split("/").filter(Boolean)[0];
+        const pathSegment = typeof pathSegmentRaw === "string" ? pathSegmentRaw : "";
 
-      // 🔎 Buscar coincidencia exacta, parcial o por subdirectorio
-      tenantData = await Tenant.findOne({
-        $or: [
-          { name: tenant },
-          { domains: { $in: [origin] } },
-          { domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } },
-          { domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } },
-        ],
-        active: true,
-      });
+        // 🧠 Solo construir las condiciones si existen valores válidos
+        const domainFilters = [];
+        if (origin) domainFilters.push({ domains: { $in: [origin] } });
+        if (baseDomain) domainFilters.push({ domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } });
+        if (pathSegment) domainFilters.push({ domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } });
+
+        tenantData = await Tenant.findOne({
+          $or: [{ name: tenant }, ...domainFilters],
+          active: true,
+        });
+      }
     } catch (err) {
       console.warn("⚠️ Error interpretando origen:", origin, err.message);
     }
+
 
     if (!tenantData) {
       console.warn(`⚠️ Tenant no encontrado (${origin}), usando 'default'`);
