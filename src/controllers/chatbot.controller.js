@@ -50,9 +50,14 @@ export const handleChatMessage = async (req, res) => {
     });
 
     console.log("🧩 Resultado Tenant.findOne:", tenantData);
+    console.log("🔍 tenant recibido en body:", tenant);
+    console.log("🔍 dominios detectados desde origin:", origin);
+    console.log("🔍 tenantData encontrado:", tenantData ? tenantData.name : "❌ ninguno");
 
     // --- Si no se encuentra, intentar fallback ---
     if (!tenantData) {
+        console.log("🔍 Detalle tenantData:", {
+
       console.warn(`⚠️ Tenant no encontrado (${origin}), verificando instrucciones para '${tenant}'...`);
       const existingInstructions = await Instruction.find({ tenant });
 
