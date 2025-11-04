@@ -18,9 +18,9 @@ export const handleChatMessage = async (req, res) => {
     const origin = req.get("origin") || req.get("referer") || "";
     let tenantData = null;
 
-    console.log("///////////////////////////////////////////////////////////");
-    console.log("🧠 tenant recibido:", tenant);
-    console.log("🌍 origin header:", origin || "(vacío)");
+    // console.log("///////////////////////////////////////////////////////////");
+    // console.log("🧠 tenant recibido:", tenant);
+    // console.log("🌍 origin header:", origin || "(vacío)");
 
     // ==========================================================
     // 1️⃣ PRIORIDAD: Buscar por nombre exacto
@@ -28,7 +28,7 @@ export const handleChatMessage = async (req, res) => {
     if (tenant && tenant !== "auto") {
       tenantData = await Tenant.findOne({ name: tenant, active: true });
       if (tenantData) {
-        console.log("✅ Tenant encontrado por nombre exacto:", tenantData.name);
+        // console.log("✅ Tenant encontrado por nombre exacto:", tenantData.name);
       }
     }
 
@@ -46,14 +46,14 @@ export const handleChatMessage = async (req, res) => {
         if (baseDomain) domainFilters.push({ domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } });
         if (pathSegment) domainFilters.push({ domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } });
 
-        console.log("🌍 domainFilters usados:", domainFilters);
+        // console.log("🌍 domainFilters usados:", domainFilters);
 
         tenantData = await Tenant.findOne({ $or: domainFilters, active: true });
         if (tenantData) {
-          console.log("✅ Tenant encontrado por dominio:", tenantData.name);
+          // console.log("✅ Tenant encontrado por dominio:", tenantData.name);
         }
       } catch (err) {
-        console.warn("⚠️ Error interpretando origen:", origin, err.message);
+        // console.warn("⚠️ Error interpretando origen:", origin, err.message);
       }
     }
 
@@ -64,7 +64,7 @@ export const handleChatMessage = async (req, res) => {
       console.warn(`⚠️ Tenant no encontrado (${tenant}), verificando instrucciones...`);
       const existingInstructions = await Instruction.find({ tenant });
       if (existingInstructions.length > 0) {
-        console.log(`✅ Tenant detectado por coincidencia en instrucciones: ${tenant}`);
+        // console.log(`✅ Tenant detectado por coincidencia en instrucciones: ${tenant}`);
         tenantData = { name: tenant, active: true };
       }
     }
@@ -73,14 +73,14 @@ export const handleChatMessage = async (req, res) => {
     // 4️⃣ Fallback final: usar "default"
     // ==========================================================
     if (!tenantData) {
-      console.warn(`⚠️ Ningún tenant coincide. Aplicando fallback 'default'`);
+      // console.warn(`⚠️ Ningún tenant coincide. Aplicando fallback 'default'`);
       tenantData = await Tenant.findOne({ name: "default" });
       tenant = "default";
     } else {
       tenant = tenantData.name;
     }
 
-    console.log(`✅ Tenant detectado o asignado: ${tenant}`);
+    // console.log(`✅ Tenant detectado o asignado: ${tenant}`);
 
     // ==========================================================
     // 5️⃣ Control de uso por tenant y global
@@ -116,7 +116,7 @@ export const handleChatMessage = async (req, res) => {
     const tenantInstructions = tenantData ? await Instruction.find({ tenant: tenantData.name }) : [];
     const instructionTexts = tenantInstructions.map((i) => i.text);
 
-    console.log(`📘 Instrucciones cargadas para ${tenant}:`, instructionTexts);
+    // console.log(`📘 Instrucciones cargadas para ${tenant}:`, instructionTexts);
 
     // ==========================================================
     // 7️⃣ Generar respuesta
@@ -144,7 +144,7 @@ export const handleChatMessage = async (req, res) => {
     res.json({ reply });
 
   } catch (error) {
-    console.error("❌ Error en handleChatMessage:", error);
+    // console.error("❌ Error en handleChatMessage:", error);
     res.status(500).json({ error: "Error interno del chatbot" });
   }
 };
