@@ -57,6 +57,11 @@ export const handleChatMessage = async (req, res) => {
     // --- Si no se encuentra, intentar fallback ---
     if (!tenantData) {
         console.log("🔍 Detalle tenantData:", {
+              name: tenantData.name,
+    domains: tenantData.domains,
+    active: tenantData.active,
+    prompt: tenantData.prompt?.substring(0, 100) + "...",
+  });
 
       console.warn(`⚠️ Tenant no encontrado (${origin}), verificando instrucciones para '${tenant}'...`);
       const existingInstructions = await Instruction.find({ tenant });
