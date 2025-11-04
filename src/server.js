@@ -7,7 +7,6 @@ import instructionRoutes from "./routes/instruction.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
 import analysisRoutes from "./routes/analysis.routes.js";
-app.use("/api/analysis", analysisRoutes);
 
 
 dotenv.config();
@@ -52,6 +51,7 @@ app.use(express.json());
 // app.use('/api', routes);
 app.use("/api/chatbot", chatbotRoutes);
 
+app.use("/api/analysis", analysisRoutes);
 
 // ✅ NUEVO: rutas específicas para las instrucciones
 app.use("/api/instructions", instructionRoutes); // 👈 Añadir esto
