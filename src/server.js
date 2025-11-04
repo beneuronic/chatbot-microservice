@@ -6,6 +6,9 @@ import { connectDB } from './config/db.js';
 import instructionRoutes from "./routes/instruction.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
+import analysisRoutes from "./routes/analysis.routes.js";
+app.use("/api/analysis", analysisRoutes);
+
 
 dotenv.config();
 connectDB();
