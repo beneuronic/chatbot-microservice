@@ -53,10 +53,28 @@ export async function generateChatbotReply(
     console.log("🧩 SYSTEM PROMPT ENVIADO A OPENAI:\n", fullSystemPrompt, "\n");
 
     // 🗣️ Mensajes enviados a OpenAI
+    // const messages = [
+    //   { role: "system", content: fullSystemPrompt },
+    //   { role: "user", content: userMessage },
+    // ];
+    // 🗣️ Mensajes enviados a OpenAI
     const messages = [
-      { role: "system", content: fullSystemPrompt },
+      { role: "system", content: promptBase.trim() },
+      ...safeInstructions.map(text => ({
+        role: "system",
+        content: text.trim(),
+      })),
+      {
+        role: "system",
+        content: `Tu apodo es ${tenant?.name || "NeuronicBot"}.
+                  Responde SIEMPRE en ${language}. Sé educado y útil.`,
+      },
       { role: "user", content: userMessage },
     ];
+console.log("🔍 safeInstructions:", safeInstructions);
+console.log("🔍 tenant:", tenant?.name);
+console.log("🔍 promptBase:", promptBase);
+
 
     // 🚀 Llamada a OpenAI
     const completion = await client.chat.completions.create({
