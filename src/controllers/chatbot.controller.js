@@ -32,10 +32,16 @@ export const handleChatMessage = async (req, res) => {
         if (baseDomain) domainFilters.push({ domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } });
         if (pathSegment) domainFilters.push({ domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } });
 
+        console.log("🧠 tenant recibido:", tenant);
+        console.log("🧱 domainFilters antes de Tenant.findOne:", domainFilters);
+
         tenantData = await Tenant.findOne({
           $or: [{ name: tenant }, ...domainFilters],
           active: true,
         });
+
+        console.log("🧩 Resultado Tenant.findOne:", tenantData);
+
       }
     } catch (err) {
       console.warn("⚠️ Error interpretando origen:", origin, err.message);
@@ -43,12 +49,22 @@ export const handleChatMessage = async (req, res) => {
 
 
     if (!tenantData) {
-      console.warn(`⚠️ Tenant no encontrado (${origin}), usando 'default'`);
-      tenantData = await Tenant.findOne({ name: "default" });
-      tenant = "default";
+      console.warn(`⚠️ Tenant no encontrado (${origin}), verificando instrucciones para '${tenant}'...`);
+
+      // 🔍 Si existen instrucciones para el tenant del body, úsalo igual
+      const existingInstructions = await Instruction.find({ tenant });
+      if (existingInstructions.length > 0) {
+        console.log(`✅ Tenant detectado por instrucciones: ${tenant}`);
+        tenantData = { name: tenant, active: true }; // objeto simulado
+      } else {
+        console.warn(`⚠️ Tampoco hay instrucciones para '${tenant}', aplicando 'default'`);
+        tenantData = await Tenant.findOne({ name: "default" });
+        tenant = "default";
+      }
     } else {
-      tenant = tenantData?.name || "default";
+      tenant = tenantData?.name || tenant;
     }
+
 
     console.log(`✅ Tenant detectado o asignado: ${tenant}`);
 
