@@ -15,111 +15,117 @@ export const handleChatMessage = async (req, res) => {
 
     if (!message) return res.status(400).json({ error: "Mensaje vacío" });
 
-    // 🌐 Detección de tenant (por body o dominio Referer/Origin)
     const origin = req.get("origin") || req.get("referer") || "";
     let tenantData = null;
 
+    console.log("///////////////////////////////////////////////////////////");
     console.log("🧠 tenant recibido:", tenant);
     console.log("🌍 origin header:", origin || "(vacío)");
 
-    // --- Construir filtros de dominio robustos ---
-    let domainFilters = [];
-    try {
-      if (origin) {
-        const parsedUrl = new URL(origin);
-        const baseDomain = parsedUrl.hostname.replace(/^www\./, "");
-        const pathSegmentRaw = parsedUrl.pathname?.split("/").filter(Boolean)[0];
-        const pathSegment = typeof pathSegmentRaw === "string" ? pathSegmentRaw : "";
-
-        domainFilters = [
-          { domains: { $in: [origin] } },
-          { domains: { $regex: baseDomain, $options: "i" } },
-          { domains: { $regex: pathSegment, $options: "i" } },
-        ];
+    // ==========================================================
+    // 1️⃣ PRIORIDAD: Buscar por nombre exacto
+    // ==========================================================
+    if (tenant && tenant !== "auto") {
+      tenantData = await Tenant.findOne({ name: tenant, active: true });
+      if (tenantData) {
+        console.log("✅ Tenant encontrado por nombre exacto:", tenantData.name);
       }
-    } catch (err) {
-      console.warn("⚠️ Error interpretando origen:", origin, err.message);
     }
 
-    console.log("🧱 domainFilters antes de Tenant.findOne:", domainFilters);
+    // ==========================================================
+    // 2️⃣ Si no existe, buscar por dominio
+    // ==========================================================
+    if (!tenantData && origin && typeof origin === "string") {
+      try {
+        const parsedUrl = new URL(origin);
+        const baseDomain = parsedUrl.hostname.replace(/^www\./, "");
+        const pathSegment = parsedUrl.pathname?.split("/").filter(Boolean)[0] || "";
 
-    // --- Buscar Tenant por nombre o dominio ---
-    tenantData = await Tenant.findOne({
-      $or: [{ name: tenant }, ...domainFilters],
-      active: true,
-    });
+        const domainFilters = [];
+        if (origin) domainFilters.push({ domains: { $in: [origin] } });
+        if (baseDomain) domainFilters.push({ domains: { $elemMatch: { $regex: baseDomain, $options: "i" } } });
+        if (pathSegment) domainFilters.push({ domains: { $elemMatch: { $regex: pathSegment, $options: "i" } } });
 
-    console.log("🧩 Resultado Tenant.findOne:", tenantData);
-    console.log("🔍 tenant recibido en body:", tenant);
-    console.log("🔍 dominios detectados desde origin:", origin);
-    console.log("🔍 tenantData encontrado:", tenantData ? tenantData.name : "❌ ninguno");
+        console.log("🌍 domainFilters usados:", domainFilters);
 
-    // --- Si no se encuentra, intentar fallback ---
-    if (!tenantData) {
-        console.log("🔍 Detalle tenantData:", {
-              name: tenantData.name,
-    domains: tenantData.domains,
-    active: tenantData.active,
-    prompt: tenantData.prompt?.substring(0, 100) + "...",
-  });
-
-      console.warn(`⚠️ Tenant no encontrado (${origin}), verificando instrucciones para '${tenant}'...`);
-      const existingInstructions = await Instruction.find({ tenant });
-
-      if (existingInstructions.length > 0) {
-        console.log(`✅ Tenant detectado por instrucciones: ${tenant}`);
-        tenantData = { name: tenant, active: true }; // objeto temporal simulado
-      } else {
-        console.warn(`⚠️ Tampoco hay instrucciones para '${tenant}', aplicando 'default'`);
-        tenantData = await Tenant.findOne({ name: "default" });
-        tenant = "default";
+        tenantData = await Tenant.findOne({ $or: domainFilters, active: true });
+        if (tenantData) {
+          console.log("✅ Tenant encontrado por dominio:", tenantData.name);
+        }
+      } catch (err) {
+        console.warn("⚠️ Error interpretando origen:", origin, err.message);
       }
+    }
+
+    // ==========================================================
+    // 3️⃣ Si aún no hay tenant, buscar por instrucciones
+    // ==========================================================
+    if (!tenantData) {
+      console.warn(`⚠️ Tenant no encontrado (${tenant}), verificando instrucciones...`);
+      const existingInstructions = await Instruction.find({ tenant });
+      if (existingInstructions.length > 0) {
+        console.log(`✅ Tenant detectado por coincidencia en instrucciones: ${tenant}`);
+        tenantData = { name: tenant, active: true };
+      }
+    }
+
+    // ==========================================================
+    // 4️⃣ Fallback final: usar "default"
+    // ==========================================================
+    if (!tenantData) {
+      console.warn(`⚠️ Ningún tenant coincide. Aplicando fallback 'default'`);
+      tenantData = await Tenant.findOne({ name: "default" });
+      tenant = "default";
     } else {
-      tenant = tenantData?.name || tenant;
+      tenant = tenantData.name;
     }
 
     console.log(`✅ Tenant detectado o asignado: ${tenant}`);
 
-    // --- Obtener o crear registros de uso ---
+    // ==========================================================
+    // 5️⃣ Control de uso por tenant y global
+    // ==========================================================
     let usage = await Usage.findOne({ tenant });
     if (!usage) usage = await Usage.create({ tenant });
 
     let globalUsage = await GlobalUsage.findOne();
-    if (!globalUsage)
-      globalUsage = await GlobalUsage.create({ totalMessages: 0, limit: GLOBAL_LIMIT });
+    if (!globalUsage) globalUsage = await GlobalUsage.create({ totalMessages: 0, limit: GLOBAL_LIMIT });
 
-    // --- Reset mensual ---
     const now = new Date();
     const daysSinceReset = (now - usage.lastReset) / (1000 * 60 * 60 * 24);
     if (daysSinceReset > 30) {
       usage.totalMessages = 0;
       usage.lastReset = now;
     }
+
     const daysSinceGlobalReset = (now - globalUsage.lastReset) / (1000 * 60 * 60 * 24);
     if (daysSinceGlobalReset > 30) {
       globalUsage.totalMessages = 0;
       globalUsage.lastReset = now;
     }
 
-    // --- Comprobar límites ---
     if (globalUsage.totalMessages >= GLOBAL_LIMIT) {
       return res.status(429).json({
         reply: "⚠️ El chatbot ha alcanzado el límite global de interacciones. Inténtalo más tarde.",
       });
     }
 
-    // --- Obtener instrucciones del tenant ---
-    const tenantInstructions = tenantData
-      ? await Instruction.find({ tenant: tenantData.name })
-      : [];
-
+    // ==========================================================
+    // 6️⃣ Instrucciones específicas del tenant
+    // ==========================================================
+    const tenantInstructions = tenantData ? await Instruction.find({ tenant: tenantData.name }) : [];
     const instructionTexts = tenantInstructions.map((i) => i.text);
+
     console.log(`📘 Instrucciones cargadas para ${tenant}:`, instructionTexts);
 
-    // --- Generar respuesta ---
+    // ==========================================================
+    // 7️⃣ Generar respuesta
+    // ==========================================================
     const reply = await generateChatbotReply(message, instructionTexts, tenantData, language);
 
-    // --- Guardar mensaje ---
+    // ==========================================================
+    // 8️⃣ Guardar mensaje e incrementar contadores
+    // ==========================================================
     await Message.create({
       tenant,
       message,
@@ -130,13 +136,13 @@ export const handleChatMessage = async (req, res) => {
       createdAt: new Date(),
     });
 
-    // --- Incrementar contadores ---
     usage.totalMessages += 1;
     globalUsage.totalMessages += 1;
     await usage.save();
     await globalUsage.save();
 
     res.json({ reply });
+
   } catch (error) {
     console.error("❌ Error en handleChatMessage:", error);
     res.status(500).json({ error: "Error interno del chatbot" });
