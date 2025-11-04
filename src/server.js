@@ -12,38 +12,38 @@ connectDB();
 
 const app = express();
 
-// 🟢 CORS configuration
+
+// 🟢 CORS — versión final para producción
 const allowedOrigins = [
-  'https://neuronicdev.es',
-  'https://www.neuronicdev.es',
-  'http://localhost:10003',
+  "https://neuronicdev.es",
+  "https://www.neuronicdev.es",
+  "http://localhost:4000",  // para test local del microservicio
+  "http://localhost:10003", // para test local del WP
 ];
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
+
+  // Permitir solo orígenes válidos
   if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader("Access-Control-Allow-Origin", origin);
   }
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, DELETE');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') {
+
+  // Métodos y cabeceras permitidas
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  // Preflight (CORS OPTIONS)
+  if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
+
   next();
 });
 
+
 app.use(express.json());
 
-// Si quieres habilitar CORS para todo (temporalmente, desarrollo):
-// app.use(cors({ origin: "*" }));
-// despues usar
-app.use(
-  cors({
-    origin: ["https://neuronicdev.es", "https://www.neuronicdev.es"], // dominios permitidos
-    methods: ["GET", "POST", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
 
 // ✅ Rutas principales
 // app.use('/api', routes);
