@@ -43,7 +43,7 @@ const analyzeSentiment = async (sampleText) => {
   try {
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
-      input: `Analiza el sentimiento general (Positivo, Negativo o Neutral) del siguiente texto de usuarios:\n\n${sampleText}`,
+      input: `Analiza el sentimiento general (Positivo, Negativo o Neutral) del siguiente texto:\n\n${sampleText}`,
     });
     const text = response.output_text?.trim();
     if (/positivo/i.test(text)) return "Positive";
@@ -61,12 +61,12 @@ const analyzeSentiment = async (sampleText) => {
 const generateTips = async (topics, sampleText) => {
   try {
     if (!topics || topics.length === 0) {
-      return "No tips available.";
+      return "<p>No tips available.</p>";
     }
 
     const prompt = `Eres un consultor UX de chatbots. Basándote en los temas más frecuentes (${topics.join(
       ", "
-    )}), ofrece 3 sugerencias cortas y prácticas para mejorar la experiencia de los usuarios.`;
+    )}), ofrece 3 sugerencias cortas, prácticas y motivadoras en formato HTML <ul><li>...</li></ul> para mejorar la experiencia de los usuarios.`;
 
     const response = await openai.responses.create({
       model: "gpt-4.1-mini",
@@ -75,16 +75,16 @@ const generateTips = async (topics, sampleText) => {
 
     return (
       response.output_text ||
-      "No tips available."
+      "<p>No tips available.</p>"
     );
   } catch (err) {
     console.warn("⚠️ Error generando tips:", err.message);
-    return "No tips available.";
+    return "<p>No tips available.</p>";
   }
 };
 
 /**
- * Función principal de análisis.
+ * Función principal de análisis del chatbot.
  */
 export const getChatbotAnalysis = async (tenant) => {
   const messages = await Message.find({ tenant }).sort({ createdAt: -1 }).lean();
@@ -107,12 +107,20 @@ export const getChatbotAnalysis = async (tenant) => {
     if (sampleText.length > 50) {
       const aiResponse = await openai.responses.create({
         model: "gpt-4.1-mini",
-        input: `Extrae los 5 temas más comunes mencionados por los usuarios en este texto:\n\n${sampleText}\n\nDevuelve en formato JSON: {"tema": frecuencia}`,
+        input: `Analiza los mensajes de usuarios y devuelve los 5 temas más comunes con su frecuencia aproximada en formato JSON. Ejemplo: {"tema1": 5, "tema2": 3}\n\n${sampleText}`,
       });
-      const text = aiResponse.output_text || "";
-      topTopics =
-        JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || "{}") ||
-        getTopKeywords(userMessages);
+
+      const text = aiResponse.output_text?.trim() || "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {};
+
+      // ✅ Forzar fallback si el JSON está vacío o mal formado
+      if (!parsed || Object.keys(parsed).length === 0) {
+        console.warn("⚠️ OpenAI devolvió un JSON vacío. Usando fallback local.");
+        topTopics = getTopKeywords(userMessages);
+      } else {
+        topTopics = parsed;
+      }
     } else {
       topTopics = getTopKeywords(userMessages);
     }
@@ -126,7 +134,10 @@ export const getChatbotAnalysis = async (tenant) => {
 
   // === Tips y sugerencias ===
   const topicsList = Object.keys(topTopics);
-  const tips = await generateTips(topicsList, sampleText);
+  const tips = await generateTips(
+    topicsList.length ? topicsList : ["precios", "horarios", "atracciones"],
+    sampleText || "Mensajes sobre el parque y sus servicios."
+  );
 
   // === Actividad por hora ===
   const activityByHour = {};
@@ -138,6 +149,7 @@ export const getChatbotAnalysis = async (tenant) => {
     (h) => `${h.padStart(2, "0")}:00`
   );
 
+  // === Devolver resultado completo ===
   return {
     totalMessages,
     totalUnanswered,
