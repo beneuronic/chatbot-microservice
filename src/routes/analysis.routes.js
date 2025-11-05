@@ -1,9 +1,7 @@
 import express from "express";
-import { getAnalysisByTenant } from "../controllers/analysis.controller.js";
+import { getAnalysis } from "../controllers/analysis.controller.js";
 
 const router = express.Router();
-
-// 📊 Ruta principal del análisis
-router.get("/", getAnalysisByTenant);
+router.get("/", getAnalysis);
 
 export default router;

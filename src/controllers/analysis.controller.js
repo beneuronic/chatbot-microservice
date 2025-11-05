@@ -1,84 +1,56 @@
 import Message from "../models/Message.js";
-import Usage from "../models/Usage.js";
-import { GlobalUsage } from "../models/GlobalUsage.js";
+import Unanswered from "../models/Unanswered.js";
+import Instruction from "../models/Instruction.js";
 import Tenant from "../models/Tenant.js";
+import { analyzeMessagesWithOpenAI, generateTips, analyzeSentiment } from "../services/analysis.service.js";
 
-/**
- * Obtiene estadísticas completas del chatbot para un tenant concreto.
- * Endpoint: GET /api/analysis?tenant=xxx
- */
-export const getAnalysisByTenant = async (req, res) => {
+export const getAnalysis = async (req, res) => {
   try {
     const { tenant } = req.query;
-    if (!tenant) return res.status(400).json({ error: "Missing tenant parameter" });
+    if (!tenant) return res.status(400).json({ error: "Tenant requerido" });
 
     const tenantData = await Tenant.findOne({ name: tenant });
-    if (!tenantData) return res.status(404).json({ error: `Tenant '${tenant}' not found` });
+    if (!tenantData) return res.status(404).json({ error: "Tenant no encontrado" });
 
-    const now = new Date();
-    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
-    const startOfWeek = new Date(now.setDate(now.getDate() - 7));
-    const startOfMonth = new Date(now.setDate(now.getDate() - 30));
+    // Mensajes del tenant
+    const messages = await Message.find({ tenant }).sort({ createdAt: -1 });
+    const unanswered = await Unanswered.countDocuments({ tenant });
+    const totalMessages = messages.length;
+    const percentUnanswered = totalMessages ? ((unanswered / totalMessages) * 100).toFixed(1) : 0;
 
-    // 📊 Totales
-    const totalMessages = await Message.countDocuments({ tenant });
-    const todayMessages = await Message.countDocuments({ tenant, createdAt: { $gte: startOfToday } });
-    const weekMessages = await Message.countDocuments({ tenant, createdAt: { $gte: startOfWeek } });
-    const monthMessages = await Message.countDocuments({ tenant, createdAt: { $gte: startOfMonth } });
+    // Texto para análisis
+    const allText = messages.map(m => m.message).join(" ");
+    const sampleMessages = messages.slice(-50).map(m => m.message).join("\n");
 
-    // 💾 Uso y límites
-    const usage = await Usage.findOne({ tenant });
-    const globalUsage = await GlobalUsage.findOne();
+    // Análisis OpenAI
+    const topicAnalysis = await analyzeMessagesWithOpenAI(allText);
+    const tips = await generateTips(Object.keys(topicAnalysis).slice(0, 3), sampleMessages);
+    const sentiment = await analyzeSentiment(sampleMessages);
 
-    const limit = usage?.limit || tenantData.messageLimit || 1000;
-    const used = usage?.totalMessages || 0;
-    const remaining = limit - used;
-    const percent = ((used / limit) * 100).toFixed(1);
-
-    // 📈 Crecimiento
-    const lastWeekMessages = await Message.countDocuments({
-      tenant,
-      createdAt: { $gte: new Date(now - 14 * 24 * 60 * 60 * 1000), $lt: startOfWeek },
+    // Actividad por hora
+    const activityByHour = {};
+    messages.forEach(msg => {
+      const h = new Date(msg.createdAt).getHours();
+      activityByHour[h] = (activityByHour[h] || 0) + 1;
     });
-    const growthWeek = lastWeekMessages
-      ? (((weekMessages - lastWeekMessages) / lastWeekMessages) * 100).toFixed(1)
-      : 0;
+    const activityLabels = Object.keys(activityByHour).map(h => `${h.padStart(2, "0")}:00`);
 
-    const lastMonthMessages = await Message.countDocuments({
-      tenant,
-      createdAt: { $gte: new Date(now - 60 * 24 * 60 * 60 * 1000), $lt: startOfMonth },
-    });
-    const growthMonth = lastMonthMessages
-      ? (((monthMessages - lastMonthMessages) / lastMonthMessages) * 100).toFixed(1)
-      : 0;
-
-    // 🗂️ Últimos mensajes
-    const latestMessages = await Message.find({ tenant })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .select("message reply createdAt");
-
-    // 📦 Respuesta consolidada
     res.json({
       tenant,
-      tenantInfo: {
-        language: tenantData.language,
-        prompt: tenantData.prompt,
-        createdAt: tenantData.createdAt,
-      },
+      tenantInfo: tenantData,
       messages: {
         total: totalMessages,
-        today: todayMessages,
-        week: weekMessages,
-        month: monthMessages,
+        unanswered,
+        percentUnanswered,
       },
-      usage: { used, remaining, limit, percent },
-      growth: { week: `${growthWeek}%`, month: `${growthMonth}%` },
-      latestMessages,
+      analysis: topicAnalysis,
+      tips,
+      sentiment,
+      activity: { labels: activityLabels, data: Object.values(activityByHour) },
+      latestMessages: messages.slice(0, 10),
     });
   } catch (err) {
-    console.error("❌ Error in getAnalysisByTenant:", err);
-    res.status(500).json({ error: "Error fetching analysis data" });
+    console.error("❌ Error en getAnalysis:", err);
+    res.status(500).json({ error: "Error generando análisis" });
   }
 };
-
