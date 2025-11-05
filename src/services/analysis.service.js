@@ -1,6 +1,9 @@
+// import { openai } from "../config/openai.js";
 import OpenAI from "openai";
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
+const client = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 export const analyzeMessagesWithOpenAI = async (text) => {
   if (!text || text.length < 10) return {};
   const prompt = `
