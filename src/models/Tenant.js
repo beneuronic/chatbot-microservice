@@ -12,11 +12,11 @@ const tenantSchema = new mongoose.Schema({
   messageLimit: { type: Number, default: 1000 },
   apiKey: { type: String, required: false },
   domains: [{ type: String }], // ✅ permite asociar varios dominios al mismo tenant
-  // knowledge: {
-  //   origin: { type: String },
-  //   pages: [{ type: Number }],
-  //   updatedAt: { type: Date }
-  // },
+  knowledge: {
+    origin: { type: String },
+    pages: [{ type: Number }],
+    updatedAt: { type: Date }
+  },
   createdAt: { type: Date, default: Date.now },
 });
 
