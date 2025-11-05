@@ -4,6 +4,7 @@ dotenv.config();
 import OpenAI from "openai";
 import Tenant from "../models/Tenant.js";
 import Instruction from "../models/Instruction.js"; // 👈 necesario
+import { buildContextFromKnowledge } from "./context.service.js";
 
 
 
@@ -39,6 +40,11 @@ export async function generateChatbotReply(
        Ofreces información sobre horarios, precios, atracciones y servicios.
        Sé breve (máx. 3 frases).`;
 
+    // 🧠 Obtener contexto desde WordPress (knowledge sync)
+    const knowledgeContext = await buildContextFromKnowledge(tenant);
+    console.log("📘 Contexto extraído desde páginas autorizadas:\n", knowledgeContext?.slice(0, 500));
+
+
     // 🧩 Combinar instrucciones del tenant (si existen)
     const combinedInstructions = safeInstructions.length
       ? `\nSigue estas instrucciones adicionales:\n- ${safeInstructions.join("\n- ")}`
@@ -47,7 +53,11 @@ export async function generateChatbotReply(
     // 💬 Construir el prompt final
     const fullSystemPrompt = `${promptBase}${combinedInstructions}
     Tu apodo es ${tenant?.name || "NeuronicBot"}.
-    Responde SIEMPRE en ${language}.`;
+    Responde SIEMPRE en ${language}.
+       // 🧠 Obtener contexto desde WordPress (knowledge sync)
+    const knowledgeContext = await buildContextFromKnowledge(tenant);
+    console.log("📘 Contexto extraído desde páginas autorizadas:\n", knowledgeContext?.slice(0, 500));
+    `;
 
     // 🪶 Log de depuración (verás esto en tu terminal)
     console.log("🧩 SYSTEM PROMPT ENVIADO A OPENAI:\n", fullSystemPrompt, "\n");
