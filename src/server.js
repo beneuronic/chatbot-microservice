@@ -7,13 +7,13 @@ import instructionRoutes from "./routes/instruction.routes.js";
 import conversationRoutes from "./routes/conversation.routes.js";
 import chatbotRoutes from "./routes/chatbot.routes.js";
 import analysisRoutes from "./routes/analysis.routes.js";
-
+import tenantRoutes from "./routes/tenant.routes.js";
+import knowledgeRoutes from "./routes/knowledge.routes.js";
 
 dotenv.config();
 connectDB();
 
 const app = express();
-
 
 // 🟢 CORS — versión final para producción
 const allowedOrigins = [
@@ -46,6 +46,8 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
+app.use("/api/tenants", tenantRoutes);
+app.use("/api/knowledge", knowledgeRoutes);
 
 // ✅ Rutas principales
 // app.use('/api', routes);
