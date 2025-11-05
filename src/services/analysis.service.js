@@ -1,45 +1,54 @@
 import OpenAI from "openai";
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Extrae los temas más frecuentes
-export async function analyzeMessagesWithOpenAI(text) {
+export const analyzeMessagesWithOpenAI = async (text) => {
+  if (!text || text.length < 10) return {};
   const prompt = `
-Analiza los siguientes mensajes de usuarios y devuelve un JSON con los temas más frecuentes y su frecuencia aproximada.
-Mensajes:
-${text.slice(0, 4000)}
+Analiza el siguiente texto de conversaciones con usuarios y devuelve un JSON con los temas más frecuentes y su frecuencia.
+Ejemplo:
+{ "precios": 10, "horarios": 5, "ubicacion": 3 }
+
+Texto:
+${text.slice(0, 5000)}
 `;
-  const response = await openai.chat.completions.create({
+  const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [{ role: "system", content: prompt }],
+    messages: [{ role: "user", content: prompt }],
   });
   try {
-    return JSON.parse(response.choices[0].message.content);
+    return JSON.parse(completion.choices[0].message.content);
   } catch {
-    return { Error: "No se pudo interpretar la respuesta" };
+    return {};
   }
-}
+};
 
-// Genera sugerencias UX
-export async function generateTips(topics, textSample) {
+export const generateUxTipsWithOpenAI = async (topics, sampleText) => {
+  if (!topics || topics.length === 0) return "No tips available.";
   const prompt = `
-Basándote en estos temas: ${topics.join(", ")}, genera 3 consejos breves de UX para mejorar la experiencia del chatbot.
-Ejemplo: "Agrega respuestas rápidas sobre precios"`;
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "system", content: prompt }],
-  });
-  return response.choices[0].message.content;
-}
+Basado en estos temas frecuentes de conversación: ${topics.join(", ")},
+y este ejemplo de mensajes:
+${sampleText.slice(0, 1000)}
 
-// Analiza sentimiento
-export async function analyzeSentiment(text) {
-  const prompt = `
-Clasifica el sentimiento general de los siguientes mensajes como "Positive", "Negative" o "Neutral":
-${text.slice(0, 4000)}
+Genera 3 sugerencias breves para mejorar la experiencia del usuario.
+Responde en HTML <ul><li>...</li></ul>.
 `;
-  const response = await openai.chat.completions.create({
+  const completion = await client.chat.completions.create({
     model: "gpt-4o-mini",
-    messages: [{ role: "system", content: prompt }],
+    messages: [{ role: "user", content: prompt }],
   });
-  return response.choices[0].message.content.trim();
-}
+  return completion.choices[0].message.content.trim();
+};
+
+export const analyzeSentimentWithOpenAI = async (text) => {
+  if (!text || text.length < 5) return "Neutral";
+  const prompt = `
+Analiza el sentimiento general (positivo, negativo o neutral) del siguiente texto:
+"${text.slice(0, 1000)}"
+Responde solo con una palabra: "Positive", "Negative" o "Neutral".
+`;
+  const completion = await client.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [{ role: "user", content: prompt }],
+  });
+  return completion.choices[0].message.content.trim();
+};
