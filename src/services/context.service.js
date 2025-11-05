@@ -1,8 +1,6 @@
-import axios from "axios";
-
 /**
  * Devuelve el contenido textual de las páginas definidas en el tenant
- * para usarlas como contexto del chatbot.
+ * para usarlas como contexto del chatbot (sin depender de axios).
  */
 export const buildContextFromKnowledge = async (tenantData) => {
   try {
@@ -18,10 +16,20 @@ export const buildContextFromKnowledge = async (tenantData) => {
     for (const pageId of pages) {
       try {
         const url = `${origin}/?p=${pageId}&cbm_plain=1`;
-        const { data } = await axios.get(url, { timeout: 8000 });
 
-        // 🔹 Sanitiza el contenido (elimina HTML y saltos innecesarios)
-        const text = data
+        // ✅ Usamos fetch nativo
+        const response = await fetch(url, { timeout: 8000 });
+        if (!response.ok) {
+          console.error(`⚠️ Error fetching ${url}: ${response.status}`);
+          continue;
+        }
+
+        const html = await response.text();
+
+        // 🔹 Limpieza básica del HTML
+        const text = html
+          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
           .replace(/<[^>]*>?/gm, "")
           .replace(/\s+/g, " ")
           .trim();
@@ -32,7 +40,9 @@ export const buildContextFromKnowledge = async (tenantData) => {
       }
     }
 
-    return contexts.join("\n\n");
+    return contexts.length
+      ? contexts.join("\n\n")
+      : "No content could be retrieved from the authorized pages.";
   } catch (err) {
     console.error("❌ Error building context:", err);
     return "Error retrieving authorized content.";
