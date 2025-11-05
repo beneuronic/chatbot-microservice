@@ -1,57 +1,151 @@
-// import { openai } from "../config/openai.js";
-import OpenAI from "openai";
+import { openai } from "../config/openai.js";
+import Message from "../models/Message.js";
+import Unanswered from "../models/Unanswered.js";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-export const analyzeMessagesWithOpenAI = async (text) => {
-  if (!text || text.length < 10) return {};
-  const prompt = `
-Analiza el siguiente texto de conversaciones con usuarios y devuelve un JSON con los temas más frecuentes y su frecuencia.
-Ejemplo:
-{ "precios": 10, "horarios": 5, "ubicacion": 3 }
+/**
+ * Limpia texto de entradas repetitivas o irrelevantes.
+ */
+const cleanMessages = (messages) =>
+  messages
+    .map((m) => m.message?.trim().toLowerCase())
+    .filter(
+      (m) =>
+        m &&
+        !["hola", "hi", "hello", "ok", "thanks", "gracias"].includes(m) &&
+        m.length > 3
+    );
 
-Texto:
-${text.slice(0, 5000)}
-`;
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-  });
+/**
+ * Cuenta palabras más repetidas para fallback local.
+ */
+const getTopKeywords = (messages, limit = 5) => {
+  const counts = {};
+  for (const msg of messages) {
+    const words = msg
+      .replace(/[^\p{L}\p{N} ]+/gu, "")
+      .split(/\s+/)
+      .filter((w) => w.length > 3);
+    for (const word of words) counts[word] = (counts[word] || 0) + 1;
+  }
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .reduce((acc, [word, count]) => {
+      acc[word] = count;
+      return acc;
+    }, {});
+};
+
+/**
+ * Analiza sentimiento con OpenAI o fallback neutro.
+ */
+const analyzeSentiment = async (sampleText) => {
   try {
-    return JSON.parse(completion.choices[0].message.content);
-  } catch {
-    return {};
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: `Analiza el sentimiento general (Positivo, Negativo o Neutral) del siguiente texto de usuarios:\n\n${sampleText}`,
+    });
+    const text = response.output_text?.trim();
+    if (/positivo/i.test(text)) return "Positive";
+    if (/negativo/i.test(text)) return "Negative";
+    return "Neutral";
+  } catch (err) {
+    console.warn("⚠️ Error en análisis de sentimiento:", err.message);
+    return "Neutral";
   }
 };
 
-export const generateUxTipsWithOpenAI = async (topics, sampleText) => {
-  if (!topics || topics.length === 0) return "No tips available.";
-  const prompt = `
-Basado en estos temas frecuentes de conversación: ${topics.join(", ")},
-y este ejemplo de mensajes:
-${sampleText.slice(0, 1000)}
+/**
+ * Genera tips de mejora usando OpenAI o fallback.
+ */
+const generateTips = async (topics, sampleText) => {
+  try {
+    if (!topics || topics.length === 0) {
+      return "No tips available.";
+    }
 
-Genera 3 sugerencias breves para mejorar la experiencia del usuario.
-Responde en HTML <ul><li>...</li></ul>.
-`;
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
-  });
-  return completion.choices[0].message.content.trim();
+    const prompt = `Eres un consultor UX de chatbots. Basándote en los temas más frecuentes (${topics.join(
+      ", "
+    )}), ofrece 3 sugerencias cortas y prácticas para mejorar la experiencia de los usuarios.`;
+
+    const response = await openai.responses.create({
+      model: "gpt-4.1-mini",
+      input: prompt,
+    });
+
+    return (
+      response.output_text ||
+      "No tips available."
+    );
+  } catch (err) {
+    console.warn("⚠️ Error generando tips:", err.message);
+    return "No tips available.";
+  }
 };
 
-export const analyzeSentimentWithOpenAI = async (text) => {
-  if (!text || text.length < 5) return "Neutral";
-  const prompt = `
-Analiza el sentimiento general (positivo, negativo o neutral) del siguiente texto:
-"${text.slice(0, 1000)}"
-Responde solo con una palabra: "Positive", "Negative" o "Neutral".
-`;
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [{ role: "user", content: prompt }],
+/**
+ * Función principal de análisis.
+ */
+export const getChatbotAnalysis = async (tenant) => {
+  const messages = await Message.find({ tenant }).sort({ createdAt: -1 }).lean();
+  const unanswered = await Unanswered.find({ tenant }).lean();
+
+  const userMessages = cleanMessages(messages);
+  const totalMessages = userMessages.length;
+  const totalUnanswered = unanswered.length;
+  const percentUnanswered =
+    totalMessages > 0
+      ? ((totalUnanswered / totalMessages) * 100).toFixed(1)
+      : 0;
+
+  // Generar texto muestra
+  const sampleText = userMessages.slice(-50).join("\n");
+
+  // === Temas más frecuentes (OpenAI o fallback) ===
+  let topTopics = {};
+  try {
+    if (sampleText.length > 50) {
+      const aiResponse = await openai.responses.create({
+        model: "gpt-4.1-mini",
+        input: `Extrae los 5 temas más comunes mencionados por los usuarios en este texto:\n\n${sampleText}\n\nDevuelve en formato JSON: {"tema": frecuencia}`,
+      });
+      const text = aiResponse.output_text || "";
+      topTopics =
+        JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || "{}") ||
+        getTopKeywords(userMessages);
+    } else {
+      topTopics = getTopKeywords(userMessages);
+    }
+  } catch (err) {
+    console.warn("⚠️ Error analizando temas:", err.message);
+    topTopics = getTopKeywords(userMessages);
+  }
+
+  // === Sentimiento general ===
+  const sentiment = await analyzeSentiment(sampleText);
+
+  // === Tips y sugerencias ===
+  const topicsList = Object.keys(topTopics);
+  const tips = await generateTips(topicsList, sampleText);
+
+  // === Actividad por hora ===
+  const activityByHour = {};
+  messages.forEach((msg) => {
+    const hour = new Date(msg.createdAt).getHours();
+    activityByHour[hour] = (activityByHour[hour] || 0) + 1;
   });
-  return completion.choices[0].message.content.trim();
+  const activityLabels = Object.keys(activityByHour).map(
+    (h) => `${h.padStart(2, "0")}:00`
+  );
+
+  return {
+    totalMessages,
+    totalUnanswered,
+    percentUnanswered,
+    topics: topTopics,
+    tips,
+    sentiment,
+    activityByHour,
+    activityLabels,
+  };
 };

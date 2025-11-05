@@ -1,93 +1,74 @@
-import Message from "../models/Message.js";
+import { getChatbotAnalysis } from "../services/analysis.service.js";
 import Tenant from "../models/Tenant.js";
 import Usage from "../models/Usage.js";
-import { analyzeMessagesWithOpenAI, generateUxTipsWithOpenAI, analyzeSentimentWithOpenAI } from "../services/analysis.service.js";
+import Message from "../models/Message.js";
 
+/**
+ * Controlador principal del endpoint GET /api/analysis
+ */
 export const getAnalysis = async (req, res) => {
   try {
-    const tenant = req.query.tenant;
-    if (!tenant) return res.status(400).json({ error: "Missing tenant parameter" });
-
-    console.log(`📊 Generando análisis para tenant: ${tenant}`);
-
-    // Buscar información del tenant
-    const tenantInfo = await Tenant.findOne({ name: tenant });
-    if (!tenantInfo) {
-      return res.status(404).json({ error: `Tenant '${tenant}' not found` });
+    const { tenant } = req.query;
+    if (!tenant) {
+      return res.status(400).json({ error: "Tenant requerido en query string." });
     }
 
-    // Obtener mensajes del tenant
-    const messages = await Message.find({ tenant }).sort({ createdAt: -1 }).limit(500);
-    const totalMessages = await Message.countDocuments({ tenant });
-    const today = await Message.countDocuments({
-      tenant,
-      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-    });
-    const week = await Message.countDocuments({
-      tenant,
-      createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
-    });
-    const month = await Message.countDocuments({
-      tenant,
-      createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
-    });
-
-    // Obtener uso
-    const usage = await Usage.findOne({ tenant });
-    const limit = tenantInfo?.messageLimit || 1000;
-    const used = usage ? usage.totalMessages : totalMessages;
-    const remaining = Math.max(0, limit - used);
-    const percent = ((used / limit) * 100).toFixed(1);
-
-    // Calcular crecimiento (dummy por ahora)
-    const growth = { week: "0%", month: "0%" };
-
-    // --- Generar análisis con OpenAI ---
-    let analysis = {};
-    let tips = "No tips available.";
-    let sentiment = "Neutral";
-
-    if (messages.length > 0) {
-      const allMessages = messages.map((m) => m.message).join(" ");
-      const sampleMessages = messages.slice(-50).map((m) => m.message).join("\n");
-
-      try {
-        analysis = await analyzeMessagesWithOpenAI(allMessages);
-        const topics = Object.keys(analysis || {});
-        tips = await generateUxTipsWithOpenAI(topics, sampleMessages);
-        sentiment = await analyzeSentimentWithOpenAI(sampleMessages);
-      } catch (err) {
-        console.warn("⚠️ Error analizando mensajes:", err.message);
-      }
+    // 🧱 Buscar datos del tenant
+    const tenantData = await Tenant.findOne({ name: tenant, active: true }).lean();
+    if (!tenantData) {
+      return res.status(404).json({ error: `Tenant '${tenant}' no encontrado o inactivo.` });
     }
 
-    // --- Analizar actividad por hora ---
-    const hours = messages.map((m) => new Date(m.createdAt).getHours());
-    const activity = {};
-    for (let i = 0; i < 24; i++) activity[i] = 0;
-    hours.forEach((h) => (activity[h] = (activity[h] || 0) + 1));
-    const activityLabels = Object.keys(activity).map((h) => `${h.padStart(2, "0")}:00`);
-    const activityData = Object.values(activity);
+    // 📊 Analítica principal (mensajes, sentimiento, tips, temas...)
+    const analysisData = await getChatbotAnalysis(tenant);
 
-    // --- Respuesta final ---
+    // 🧾 Datos de uso globales
+    const usageData = await Usage.findOne({ tenant }).lean();
+    const totalUsed = usageData?.totalMessages || 0;
+    const limit = tenantData?.messageLimit || 1000;
+    const remaining = Math.max(limit - totalUsed, 0);
+    const percentUsed = ((totalUsed / limit) * 100).toFixed(1);
+
+    // 🕐 Últimos mensajes
+    const latestMessages = await Message.find({ tenant })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select("message reply createdAt -_id")
+      .lean();
+
+    // ✅ Estructura unificada de respuesta
     res.json({
       tenant,
       tenantInfo: {
-        language: tenantInfo.language,
-        prompt: tenantInfo.prompt,
-        createdAt: tenantInfo.createdAt,
+        language: tenantData.language || "—",
+        prompt: tenantData.prompt || "",
+        createdAt: tenantData.createdAt,
       },
-      messages: { total: totalMessages, today, week, month },
-      usage: { used, remaining, limit, percent },
-      growth,
-      analysis,
-      activity: { labels: activityLabels, data: activityData },
-      tips,
-      sentiment,
-      latestMessages: messages.slice(0, 10),
+      messages: {
+        total: analysisData.totalMessages,
+        unanswered: analysisData.totalUnanswered,
+        percentUnanswered: analysisData.percentUnanswered,
+      },
+      usage: {
+        used: totalUsed,
+        remaining,
+        limit,
+        percent: percentUsed,
+      },
+      analysis: {
+        topics: analysisData.topics,
+        tips: analysisData.tips,
+        sentiment: analysisData.sentiment,
+        activityByHour: analysisData.activityByHour,
+        activityLabels: analysisData.activityLabels,
+      },
+      latestMessages,
     });
   } catch (error) {
     console.error("❌ Error en getAnalysis:", error);
-    res.status(500).json({ error: "Error generating analysis" });
+    res.status(500).json({
+      error: "Error generando el análisis del chatbot.",
+      details: error.message,
+    });
   }
 };
