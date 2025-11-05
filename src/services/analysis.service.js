@@ -73,10 +73,10 @@ const generateTips = async (topics, sampleText) => {
       input: prompt,
     });
 
-    return (
-      response.output_text ||
-      "<p>No tips available.</p>"
-    );
+    let html = response.output_text || "<p>No tips available.</p>";
+    html = html.replace(/```html|```/g, "").trim();
+    return html;
+
   } catch (err) {
     console.warn("⚠️ Error generando tips:", err.message);
     return "<p>No tips available.</p>";
