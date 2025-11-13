@@ -1,5 +1,5 @@
 import express from 'express';
-import cors from 'cors';
+import cors from 'cors'; //comentar-amandix?
 import dotenv from 'dotenv';
 // import routes from './routes/index.js';
 import { connectDB } from './config/db.js';
@@ -49,15 +49,10 @@ app.use(express.json());
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/knowledge", knowledgeRoutes);
 
-// ✅ Rutas principales
-// app.use('/api', routes);
+// Registro y manejo de rutas 
 app.use("/api/chatbot", chatbotRoutes);
-
 app.use("/api/analysis", analysisRoutes);
-
-// ✅ NUEVO: rutas específicas para las instrucciones
-app.use("/api/instructions", instructionRoutes); // 👈 Añadir esto
-
+app.use("/api/instructions", instructionRoutes);
 app.use("/api/conversations", conversationRoutes);
 
 // ✅ Ruta raíz de prueba
